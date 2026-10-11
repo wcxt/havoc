@@ -5,6 +5,7 @@
 #include "string.h"
 #include "sys/socket.h"
 #include "unistd.h"
+#include <asm-generic/socket.h>
 #include <assert.h>
 #include <errno.h>
 #include <stddef.h>
@@ -197,12 +198,20 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  int opt = 1;
+  int ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  if (ret < 0) {
+    perror("setsockopt");
+    close(fd);
+    return EXIT_FAILURE;
+  }
+
   // man 7 ip for info
   struct sockaddr_in addr = {.sin_family = AF_INET,
                              .sin_port = htons(8000),
                              .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
 
-  int ret = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
+  ret = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
   if (ret < 0) {
     perror("bind");
     close(fd);
