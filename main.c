@@ -6,6 +6,7 @@
 #include "sys/socket.h"
 #include "unistd.h"
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <sys/types.h>
 
@@ -47,10 +48,28 @@ void handle_client(int cfd) {
   int total_n = 0;
 
   while (1) {
-    ssize_t n = read(cfd, buf + total_n, (MAX_REQUEST_SIZE - total_n) - 1);
-    if (n <= 0) {
-      break;
+    // If buffer is full
+    if (total_n >= MAX_REQUEST_SIZE - 1) {
+      fprintf(stderr, "handle_client: buffer reached MAX_REQUEST_SIZE");
+      close(cfd);
+      return;
     }
+
+    ssize_t n = read(cfd, buf + total_n, (MAX_REQUEST_SIZE - total_n) - 1);
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+
+      perror("read");
+      close(cfd);
+      return;
+    }
+    if (n == 0) {
+      close(cfd);
+      return;
+    }
+
     total_n += n;
 
     if (!headers) {
@@ -65,6 +84,7 @@ void handle_client(int cfd) {
       method = buf;
       char *space = strstr(buf, " ");
       if (space == NULL) {
+        fprintf(stderr, "handle_client: Invalid start-line format");
         close(cfd);
         return;
       }
@@ -73,6 +93,7 @@ void handle_client(int cfd) {
 
       char *space2 = strstr(path, " ");
       if (space2 == NULL) {
+        fprintf(stderr, "handle_client: Invalid start-line format");
         close(cfd);
         return;
       }
@@ -98,6 +119,7 @@ void handle_client(int cfd) {
 
         char *colon = strstr(rest, ":");
         if (colon == NULL) {
+          fprintf(stderr, "handle_client: Invalid headers format");
           close(cfd);
           return;
         }
@@ -111,7 +133,13 @@ void handle_client(int cfd) {
 
         printf("%s: %s\n", rest, value);
         if (strcmp(rest, "content-length") == 0) {
+          errno = 0;
           content_len = strtol(value, NULL, 10);
+          if (errno != 0) {
+            perror("strtol");
+            close(cfd);
+            return;
+          }
         }
         rest = fcrlf + 2;
       }
@@ -121,6 +149,7 @@ void handle_client(int cfd) {
 
       char *colon = strstr(rest, ":");
       if (colon == NULL) {
+        fprintf(stderr, "handle_client: Invalid headers format");
         close(cfd);
         return;
       }
@@ -133,7 +162,13 @@ void handle_client(int cfd) {
 
       printf("%s: %s\n", rest, value);
       if (strcmp(rest, "content-length") == 0) {
+        errno = 0;
         content_len = strtol(value, NULL, 10);
+        if (errno != 0) {
+          perror("strtol");
+          close(cfd);
+          return;
+        }
       }
     }
     // Guarranted headers + body at this stage
@@ -153,11 +188,12 @@ void handle_client(int cfd) {
   return;
 }
 
-int main(int argc, char *argv[]) {
+int main() {
   // Opens an endpoint/file descriptor for communication.
   // 0 chooses TCP protocol automatically
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
+    perror("socket");
     return -1;
   }
 
@@ -166,14 +202,19 @@ int main(int argc, char *argv[]) {
                              .sin_port = htons(8000),
                              .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
 
-  int result = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
-  if (result != 0) {
+  int ret = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
+  if (ret < 0) {
+    perror("bind");
+    close(fd);
     return -1;
   }
 
   printf("PID: %d | Socket FD: %d\n", getpid(), fd);
-  result = listen(fd, SOMAXCONN);
-  if (result != 0) {
+
+  ret = listen(fd, SOMAXCONN);
+  if (ret < 0) {
+    perror("listen");
+    close(fd);
     return -1;
   }
 
@@ -182,7 +223,19 @@ int main(int argc, char *argv[]) {
   while (1) {
     int cfd = accept(fd, NULL, NULL);
     if (cfd < 0) {
-      return -1;
+      // Aborted by client or interrupted by signal
+      if (errno == ECONNABORTED || errno == EINTR) {
+        continue;
+      }
+      // Resource exhaustation
+      if (errno == EMFILE || errno == ENFILE || errno == ENOMEM ||
+          errno == ENOBUFS) {
+        perror("accept");
+        sleep(1);
+        continue;
+      }
+      perror("accept");
+      break;
     }
 
     handle_client(cfd);
