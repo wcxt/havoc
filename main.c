@@ -194,7 +194,7 @@ int main() {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
     perror("socket");
-    return -1;
+    return EXIT_FAILURE;
   }
 
   // man 7 ip for info
@@ -206,7 +206,7 @@ int main() {
   if (ret < 0) {
     perror("bind");
     close(fd);
-    return -1;
+    return EXIT_FAILURE;
   }
 
   printf("PID: %d | Socket FD: %d\n", getpid(), fd);
@@ -215,7 +215,7 @@ int main() {
   if (ret < 0) {
     perror("listen");
     close(fd);
-    return -1;
+    return EXIT_FAILURE;
   }
 
   // Basic TCP accept loop
@@ -241,5 +241,5 @@ int main() {
     handle_client(cfd);
   }
   close(fd);
-  return 0;
+  return EXIT_SUCCESS;
 }
