@@ -1,4 +1,3 @@
-#include "ctype.h"
 #include "netinet/in.h"
 #include "stdio.h"
 #include "stdlib.h"
@@ -7,11 +6,19 @@
 #include "unistd.h"
 #include <asm-generic/socket.h>
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <stddef.h>
 #include <sys/types.h>
 
 #define MAX_REQUEST_SIZE 65536
+
+typedef struct HttpRequest {
+  // Start-line
+  char *method;
+  char *path;
+  char *version;
+} HttpRequest;
 
 // Removes string leading and trailing whitespaces.
 // Zero-copy version
@@ -42,9 +49,8 @@ void handle_client(int cfd) {
   char *headers = NULL;
   char *body = NULL;
 
-  char *method = NULL;
-  char *path = NULL;
-  char *version = NULL;
+  HttpRequest http_request = {.method = NULL, .path = NULL, .version = NULL};
+
   long content_len = 0;
   int total_n = 0;
 
@@ -82,7 +88,7 @@ void handle_client(int cfd) {
       headers = crlf + 2;
 
       // Parse Start-line
-      method = buf;
+      http_request.method = buf;
       char *space = strstr(buf, " ");
       if (space == NULL) {
         fprintf(stderr, "handle_client: Invalid start-line format");
@@ -90,16 +96,16 @@ void handle_client(int cfd) {
         return;
       }
       *space = '\0';
-      path = space + 1;
+      http_request.path = space + 1;
 
-      char *space2 = strstr(path, " ");
+      char *space2 = strstr(http_request.path, " ");
       if (space2 == NULL) {
         fprintf(stderr, "handle_client: Invalid start-line format");
         close(cfd);
         return;
       }
       *space2 = '\0';
-      version = space2 + 1;
+      http_request.version = space2 + 1;
     }
     if (headers && !body) {
       char *hcrlf = strstr(headers, "\r\n\r\n");
