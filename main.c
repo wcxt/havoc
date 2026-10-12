@@ -26,6 +26,7 @@ typedef struct {
   char *version;
 
   Header headers[MAX_REQUEST_HEADERS];
+  int headers_len;
 } HttpRequest;
 
 // Removes string leading and trailing whitespaces.
@@ -51,13 +52,32 @@ char *trim(char *s) {
   return s;
 }
 
+int http_request_add_header(HttpRequest *http_request, char *key, char *value) {
+  value = trim(value);
+
+  for (int i = 0; i < strlen(key); i++) {
+    key[i] = tolower(key[i]);
+  }
+
+  if (http_request->headers_len >= MAX_REQUEST_HEADERS) {
+    return -1;
+  }
+
+  Header header = {.key = key, .value = value};
+  http_request->headers[http_request->headers_len] = header;
+  http_request->headers_len++;
+
+  return 0;
+}
+
 // Logic for how to handle incoming client
 void handle_client(int cfd) {
   char buf[MAX_REQUEST_SIZE];
   char *headers = NULL;
   char *body = NULL;
 
-  HttpRequest http_request = {.method = NULL, .path = NULL, .version = NULL};
+  HttpRequest http_request = {
+      .method = NULL, .path = NULL, .version = NULL, .headers_len = 0};
 
   long content_len = 0;
   int total_n = 0;
@@ -144,22 +164,14 @@ void handle_client(int cfd) {
         }
         *colon = '\0';
         value = colon + 1;
-        value = trim(value);
 
-        for (int i = 0; i < strlen(rest); i++) {
-          rest[i] = tolower(rest[i]);
-        }
-
-        if (header_len >= MAX_REQUEST_HEADERS) {
-          fprintf(stderr,
-                  "handle_client: Exceeded limit of MAX_REQUEST_HEADERS");
+        if (http_request_add_header(&http_request, rest, value) < 0) {
+          fprintf(
+              stderr,
+              "http_request_add_header: Exceeded limit of MAX_REQUEST_HEADERS");
           close(cfd);
           return;
         }
-
-        Header header = {.key = rest, .value = value};
-        http_request.headers[header_len] = header;
-        header_len++;
 
         printf("%s: %s\n", rest, value);
         if (strcmp(rest, "content-length") == 0) {
