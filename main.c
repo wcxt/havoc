@@ -128,8 +128,11 @@ void handle_client(int cfd) {
       char *rest = headers;
       int header_len = 0;
 
-      while ((fcrlf = strstr(rest, "\r\n"))) {
-        *fcrlf = '\0';
+      while (1) {
+        fcrlf = strstr(rest, "\r\n");
+        if (fcrlf != NULL) {
+          *fcrlf = '\0';
+        }
 
         char *value = NULL;
 
@@ -168,43 +171,11 @@ void handle_client(int cfd) {
             return;
           }
         }
-        rest = fcrlf + 2;
-      }
 
-      // Final header
-      char *value = NULL;
-
-      char *colon = strstr(rest, ":");
-      if (colon == NULL) {
-        fprintf(stderr, "handle_client: Invalid headers format");
-        close(cfd);
-        return;
-      }
-      *colon = '\0';
-      value = colon + 1;
-      value = trim(value);
-      for (int i = 0; i < strlen(rest); i++) {
-        rest[i] = tolower(rest[i]);
-      }
-
-      if (header_len >= MAX_REQUEST_HEADERS) {
-        fprintf(stderr, "handle_client: Exceeded limit of MAX_REQUEST_HEADERS");
-        close(cfd);
-        return;
-      }
-
-      Header header = {.key = rest, .value = value};
-      http_request.headers[header_len] = header;
-
-      printf("%s: %s\n", rest, value);
-      if (strcmp(rest, "content-length") == 0) {
-        errno = 0;
-        content_len = strtol(value, NULL, 10);
-        if (errno != 0) {
-          perror("strtol");
-          close(cfd);
-          return;
+        if (fcrlf == NULL) {
+          break;
         }
+        rest = fcrlf + 2;
       }
     }
     // Guarranted headers + body at this stage
