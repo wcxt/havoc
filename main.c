@@ -12,12 +12,20 @@
 #include <sys/types.h>
 
 #define MAX_REQUEST_SIZE 65536
+#define MAX_REQUEST_HEADERS 64
 
-typedef struct HttpRequest {
+typedef struct {
+  char *key;
+  char *value;
+} Header;
+
+typedef struct {
   // Start-line
   char *method;
   char *path;
   char *version;
+
+  Header headers[MAX_REQUEST_HEADERS];
 } HttpRequest;
 
 // Removes string leading and trailing whitespaces.
@@ -118,6 +126,7 @@ void handle_client(int cfd) {
       // Parse headers
       char *fcrlf = NULL;
       char *rest = headers;
+      int header_len = 0;
 
       while ((fcrlf = strstr(rest, "\r\n"))) {
         *fcrlf = '\0';
@@ -137,6 +146,17 @@ void handle_client(int cfd) {
         for (int i = 0; i < strlen(rest); i++) {
           rest[i] = tolower(rest[i]);
         }
+
+        if (header_len >= MAX_REQUEST_HEADERS) {
+          fprintf(stderr,
+                  "handle_client: Exceeded limit of MAX_REQUEST_HEADERS");
+          close(cfd);
+          return;
+        }
+
+        Header header = {.key = rest, .value = value};
+        http_request.headers[header_len] = header;
+        header_len++;
 
         printf("%s: %s\n", rest, value);
         if (strcmp(rest, "content-length") == 0) {
@@ -166,6 +186,15 @@ void handle_client(int cfd) {
       for (int i = 0; i < strlen(rest); i++) {
         rest[i] = tolower(rest[i]);
       }
+
+      if (header_len >= MAX_REQUEST_HEADERS) {
+        fprintf(stderr, "handle_client: Exceeded limit of MAX_REQUEST_HEADERS");
+        close(cfd);
+        return;
+      }
+
+      Header header = {.key = rest, .value = value};
+      http_request.headers[header_len] = header;
 
       printf("%s: %s\n", rest, value);
       if (strcmp(rest, "content-length") == 0) {
