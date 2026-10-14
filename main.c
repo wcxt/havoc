@@ -53,6 +53,10 @@ char *trim(char *s) {
 }
 
 int http_request_add_header(HttpRequest *http_request, char *key, char *value) {
+  assert(http_request != NULL);
+  assert(key != NULL);
+  assert(value != NULL);
+
   value = trim(value);
 
   for (int i = 0; i < strlen(key); i++) {
@@ -68,6 +72,33 @@ int http_request_add_header(HttpRequest *http_request, char *key, char *value) {
   http_request->headers_len++;
 
   return 0;
+}
+
+char *http_request_get_header(HttpRequest *http_request, char *key) {
+  assert(http_request != NULL);
+  assert(key != NULL);
+
+  // Duplicate string so original key won't be modified
+  char *key_copy = strdup(key);
+  if (key_copy == NULL) {
+    return NULL;
+  }
+
+  for (int i = 0; i < strlen(key_copy); i++) {
+    key_copy[i] = tolower(key_copy[i]);
+  }
+
+  for (int i = 0; i < http_request->headers_len; i++) {
+    if (strcmp(http_request->headers[i].key, key_copy) != 0) {
+      continue;
+    }
+
+    free(key_copy);
+    return http_request->headers[i].value;
+  }
+
+  free(key_copy);
+  return NULL;
 }
 
 // Logic for how to handle incoming client
@@ -173,21 +204,22 @@ void handle_client(int cfd) {
           return;
         }
 
-        printf("%s: %s\n", rest, value);
-        if (strcmp(rest, "content-length") == 0) {
-          errno = 0;
-          content_len = strtol(value, NULL, 10);
-          if (errno != 0) {
-            perror("strtol");
-            close(cfd);
-            return;
-          }
-        }
-
         if (fcrlf == NULL) {
           break;
         }
         rest = fcrlf + 2;
+      }
+    }
+
+    char *content_len_raw =
+        http_request_get_header(&http_request, "Content-length");
+    if (content_len_raw) {
+      errno = 0;
+      content_len = strtol(content_len_raw, NULL, 10);
+      if (errno != 0) {
+        perror("strtol");
+        close(cfd);
+        return;
       }
     }
     // Guarranted headers + body at this stage
