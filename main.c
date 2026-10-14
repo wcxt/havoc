@@ -17,7 +17,12 @@
 typedef struct {
   char *key;
   char *value;
-} Header;
+} HttpHeader;
+
+typedef struct {
+  HttpHeader entries[MAX_REQUEST_HEADERS];
+  int len;
+} HttpHeaders;
 
 typedef struct {
   // Start-line
@@ -25,8 +30,7 @@ typedef struct {
   char *path;
   char *version;
 
-  Header headers[MAX_REQUEST_HEADERS];
-  int headers_len;
+  HttpHeaders headers;
 } HttpRequest;
 
 // Removes string leading and trailing whitespaces.
@@ -52,8 +56,8 @@ char *trim(char *s) {
   return s;
 }
 
-int http_request_add_header(HttpRequest *http_request, char *key, char *value) {
-  assert(http_request != NULL);
+int http_headers_add(HttpHeaders *http_headers, char *key, char *value) {
+  assert(http_headers != NULL);
   assert(key != NULL);
   assert(value != NULL);
 
@@ -63,21 +67,24 @@ int http_request_add_header(HttpRequest *http_request, char *key, char *value) {
     key[i] = tolower(key[i]);
   }
 
-  if (http_request->headers_len >= MAX_REQUEST_HEADERS) {
+  if (http_headers->len >= MAX_REQUEST_HEADERS) {
     return -1;
   }
 
-  Header header = {.key = key, .value = value};
-  http_request->headers[http_request->headers_len] = header;
-  http_request->headers_len++;
+  HttpHeader header = {.key = key, .value = value};
+  http_headers->entries[http_headers->len] = header;
+  http_headers->len++;
 
   return 0;
 }
 
-char *http_request_get_header(HttpRequest *http_request, char *key) {
-  assert(http_request != NULL);
+char *http_headers_get(HttpHeaders *http_headers, char *key) {
+  assert(http_headers != NULL);
   assert(key != NULL);
 
+  // INFO: Maybe try changing to a just array buffer
+  // instead of allocating on the heap when duplicating string.
+  //
   // Duplicate string so original key won't be modified
   char *key_copy = strdup(key);
   if (key_copy == NULL) {
@@ -88,13 +95,13 @@ char *http_request_get_header(HttpRequest *http_request, char *key) {
     key_copy[i] = tolower(key_copy[i]);
   }
 
-  for (int i = 0; i < http_request->headers_len; i++) {
-    if (strcmp(http_request->headers[i].key, key_copy) != 0) {
+  for (int i = 0; i < http_headers->len; i++) {
+    if (strcmp(http_headers->entries[i].key, key_copy) != 0) {
       continue;
     }
 
     free(key_copy);
-    return http_request->headers[i].value;
+    return http_headers->entries[i].value;
   }
 
   free(key_copy);
@@ -108,7 +115,7 @@ void handle_client(int cfd) {
   char *body = NULL;
 
   HttpRequest http_request = {
-      .method = NULL, .path = NULL, .version = NULL, .headers_len = 0};
+      .method = NULL, .path = NULL, .version = NULL, .headers.len = 0};
 
   long content_len = 0;
   int total_n = 0;
@@ -196,7 +203,7 @@ void handle_client(int cfd) {
         *colon = '\0';
         value = colon + 1;
 
-        if (http_request_add_header(&http_request, rest, value) < 0) {
+        if (http_headers_add(&http_request.headers, rest, value) < 0) {
           fprintf(
               stderr,
               "http_request_add_header: Exceeded limit of MAX_REQUEST_HEADERS");
@@ -212,7 +219,7 @@ void handle_client(int cfd) {
     }
 
     char *content_len_raw =
-        http_request_get_header(&http_request, "Content-length");
+        http_headers_get(&http_request.headers, "Content-length");
     if (content_len_raw) {
       errno = 0;
       content_len = strtol(content_len_raw, NULL, 10);
