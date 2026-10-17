@@ -13,6 +13,7 @@
 
 #define MAX_REQUEST_SIZE 65536
 #define MAX_REQUEST_HEADERS 64
+#define MAX_URI_LENGTH 1024
 
 typedef struct {
   char *key;
@@ -185,6 +186,17 @@ void handle_client(int cfd) {
     if (strcmp(http_request.version, "HTTP/1.1") != 0 &&
         strcmp(http_request.version, "HTTP/1.0") != 0) {
       dprintf(cfd, "HTTP/1.1 505 HTTP Version Not Supported\r\n\r\n");
+      close(cfd);
+      return;
+    }
+    // Validate path. We support only origin-form
+    if (http_request.path[0] != '/') {
+      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
+      close(cfd);
+      return;
+    }
+    if (strlen(http_request.path) > MAX_URI_LENGTH) {
+      dprintf(cfd, "HTTP/1.1 414 URI Too Long\r\n\r\n");
       close(cfd);
       return;
     }
