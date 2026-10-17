@@ -246,6 +246,25 @@ void handle_client(int cfd) {
       }
     }
 
+    // Host header validation
+    // TODO: Check if valid value
+    int host_count = 0;
+    for (int i = 0; i < http_request.headers.len; i++) {
+      if (strcmp(http_request.headers.entries[i].key, "host") == 0) {
+        host_count++;
+      }
+    }
+    if (host_count > 1) {
+      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
+      close(cfd);
+      return;
+    }
+    if (strcmp(http_request.version, "HTTP/1.1") == 0 && host_count == 0) {
+      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
+      close(cfd);
+      return;
+    }
+
     char *content_len_raw =
         http_headers_get(&http_request.headers, "Content-length");
     if (content_len_raw) {
