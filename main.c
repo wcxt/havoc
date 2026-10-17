@@ -181,6 +181,13 @@ void handle_client(int cfd) {
       close(cfd);
       return;
     }
+    // Validate version (Both HTTP1.0 and 1.1 are supported)
+    if (strcmp(http_request.version, "HTTP/1.1") != 0 &&
+        strcmp(http_request.version, "HTTP/1.0") != 0) {
+      dprintf(cfd, "HTTP/1.1 505 HTTP Version Not Supported\r\n\r\n");
+      close(cfd);
+      return;
+    }
 
     if (headers && !body) {
       char *hcrlf = strstr(headers, "\r\n\r\n");
