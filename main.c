@@ -242,6 +242,13 @@ void handle_client(int cfd) {
     break;
   };
 
+  // Send response
+  char *res_body = "Hello from server";
+  dprintf(cfd,
+          "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
+          "charset=utf-8\r\n\r\n%s",
+          strlen(res_body), res_body);
+
   close(cfd);
   return;
 }
