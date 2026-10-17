@@ -173,6 +173,15 @@ void handle_client(int cfd) {
       *space2 = '\0';
       http_request.version = space2 + 1;
     }
+
+    // Validate method (Only HEAD and GET are implemented)
+    if (strcmp(http_request.method, "GET") != 0 &&
+        strcmp(http_request.method, "HEAD") != 0) {
+      dprintf(cfd, "HTTP/1.1 501 Not Implemented\r\n\r\n");
+      close(cfd);
+      return;
+    }
+
     if (headers && !body) {
       char *hcrlf = strstr(headers, "\r\n\r\n");
       if (hcrlf == NULL) {
