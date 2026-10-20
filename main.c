@@ -289,7 +289,7 @@ void handle_client(int cfd) {
     break;
   };
 
-  // strip query and fragment
+  // Strip query and fragment
   char *path = strdup(http_request.target);
   if (path == NULL) {
     perror("strdup");
@@ -303,9 +303,18 @@ void handle_client(int cfd) {
     rest += 1;
   }
 
+  // Resource path
+  char full_path[512];
+  sprintf(full_path, "public%s", path);
+
+  // Transform / into index.html
+  if (path[strlen(path) - 1] == '/') {
+    strcat(full_path, "index.html");
+  }
+
   // Send response
   char res_body[512];
-  sprintf(res_body, "path: %s\n", path);
+  sprintf(res_body, "path: %s\n", full_path);
   dprintf(cfd,
           "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
           "charset=utf-8\r\n\r\n%s",
