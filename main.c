@@ -28,7 +28,7 @@ typedef struct {
 typedef struct {
   // Start-line
   char *method;
-  char *path;
+  char *target;
   char *version;
 
   HttpHeaders headers;
@@ -116,7 +116,7 @@ void handle_client(int cfd) {
   char *body = NULL;
 
   HttpRequest http_request = {
-      .method = NULL, .path = NULL, .version = NULL, .headers.len = 0};
+      .method = NULL, .target = NULL, .version = NULL, .headers.len = 0};
 
   long content_len = 0;
   int total_n = 0;
@@ -163,9 +163,9 @@ void handle_client(int cfd) {
         return;
       }
       *space = '\0';
-      http_request.path = space + 1;
+      http_request.target = space + 1;
 
-      char *space2 = strstr(http_request.path, " ");
+      char *space2 = strstr(http_request.target, " ");
       if (space2 == NULL) {
         fprintf(stderr, "handle_client: Invalid start-line format");
         close(cfd);
@@ -190,12 +190,12 @@ void handle_client(int cfd) {
       return;
     }
     // Validate path. We support only origin-form
-    if (http_request.path[0] != '/') {
+    if (http_request.target[0] != '/') {
       dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
       close(cfd);
       return;
     }
-    if (strlen(http_request.path) > MAX_URI_LENGTH) {
+    if (strlen(http_request.target) > MAX_URI_LENGTH) {
       dprintf(cfd, "HTTP/1.1 414 URI Too Long\r\n\r\n");
       close(cfd);
       return;
@@ -289,8 +289,23 @@ void handle_client(int cfd) {
     break;
   };
 
+  // strip query and fragment
+  char *path = strdup(http_request.target);
+  if (path == NULL) {
+    perror("strdup");
+    close(cfd);
+    return;
+  }
+
+  char *rest = strpbrk(path, "?#");
+  if (rest != NULL) {
+    *rest = '\0';
+    rest += 1;
+  }
+
   // Send response
-  char *res_body = "Hello from server";
+  char res_body[512];
+  sprintf(res_body, "path: %s\n", path);
   dprintf(cfd,
           "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
           "charset=utf-8\r\n\r\n%s",
