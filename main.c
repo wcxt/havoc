@@ -8,7 +8,10 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stddef.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 #define MAX_REQUEST_SIZE 65536
@@ -312,9 +315,24 @@ void handle_client(int cfd) {
     strcat(full_path, "index.html");
   }
 
+  int rfd = open(full_path, O_RDONLY);
+  if (rfd < 0) {
+    perror("open");
+    close(cfd);
+    return;
+  }
+
+  struct stat st;
+  int ret = fstat(rfd, &st);
+  if (ret < 0) {
+    perror("fstat");
+    close(cfd);
+    return;
+  }
+
   // Send response
   char res_body[512];
-  sprintf(res_body, "path: %s\n", full_path);
+  sprintf(res_body, "path: %s\nlength: %ld\n", full_path, st.st_size);
   dprintf(cfd,
           "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
           "charset=utf-8\r\n\r\n%s",
