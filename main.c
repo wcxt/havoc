@@ -322,6 +322,7 @@ void handle_client(int cfd) {
     return;
   }
 
+  // Get content length from stats
   struct stat st;
   int ret = fstat(rfd, &st);
   if (ret < 0) {
@@ -330,9 +331,33 @@ void handle_client(int cfd) {
     return;
   }
 
+  // Get mimetype
+  char *filename = strrchr(full_path, '/');
+  if (filename == NULL) {
+    perror("strrchr");
+    close(cfd);
+    return;
+  }
+  char *ext = strchr(filename, '.');
+  if (ext == NULL) {
+    perror("strchr");
+    close(cfd);
+    return;
+  }
+
+  char *mimetype = "application/octet-stream";
+  if (strcmp(ext, ".html") == 0) {
+    mimetype = "text/html";
+  } else if (strcmp(ext, ".css") == 0) {
+    mimetype = "text/css";
+  } else if (strcmp(ext, ".js") == 0) {
+    mimetype = "application/javascript";
+  }
+
   // Send response
   char res_body[512];
-  sprintf(res_body, "path: %s\nlength: %ld\n", full_path, st.st_size);
+  sprintf(res_body, "path: %s\nlength: %ld\nmimetype: %s\n", full_path,
+          st.st_size, mimetype);
   dprintf(cfd,
           "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
           "charset=utf-8\r\n\r\n%s",
