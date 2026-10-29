@@ -4,6 +4,7 @@
 #include "string.h"
 #include "sys/socket.h"
 #include "unistd.h"
+#include <asm-generic/errno-base.h>
 #include <asm-generic/socket.h>
 #include <assert.h>
 #include <ctype.h>
@@ -317,7 +318,11 @@ void handle_client(int cfd) {
 
   int rfd = open(full_path, O_RDONLY);
   if (rfd < 0) {
-    perror("open");
+    if (errno == ENOENT) {
+      dprintf(cfd, "HTTP/1.1 404 Not Found\r\n\r\n");
+    } else {
+      perror("open");
+    }
     close(cfd);
     return;
   }
