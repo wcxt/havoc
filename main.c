@@ -332,6 +332,7 @@ void handle_client(int cfd) {
   int ret = fstat(rfd, &st);
   if (ret < 0) {
     perror("fstat");
+    close(rfd);
     close(cfd);
     return;
   }
@@ -340,12 +341,14 @@ void handle_client(int cfd) {
   char *filename = strrchr(full_path, '/');
   if (filename == NULL) {
     perror("strrchr");
+    close(rfd);
     close(cfd);
     return;
   }
   char *ext = strchr(filename, '.');
   if (ext == NULL) {
     perror("strchr");
+    close(rfd);
     close(cfd);
     return;
   }
@@ -359,15 +362,29 @@ void handle_client(int cfd) {
     mimetype = "application/javascript";
   }
 
-  // Send response
-  char res_body[512];
-  sprintf(res_body, "path: %s\nlength: %ld\nmimetype: %s\n", full_path,
-          st.st_size, mimetype);
+  // Send initial response data (startline + headers)
   dprintf(cfd,
-          "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\nContent-Type: text/plain; "
-          "charset=utf-8\r\n\r\n%s",
-          strlen(res_body), res_body);
+          "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\nContent-Type: %s; "
+          "charset=utf-8\r\n\r\n",
+          st.st_size, mimetype);
 
+  long offset = 0;
+  while (offset < st.st_size) {
+    int bytes_written = sendfile(cfd, rfd, &offset, st.st_size - offset);
+    if (bytes_written <= 0) {
+      if (bytes_written < 0 && errno == EINTR) {
+        continue;
+      }
+      if (bytes_written < 0) {
+        perror("sendfile");
+      }
+      close(rfd);
+      close(cfd);
+      return;
+    }
+  }
+
+  close(rfd);
   close(cfd);
   return;
 }
