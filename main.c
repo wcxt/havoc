@@ -113,6 +113,27 @@ char *http_headers_get(HttpHeaders *http_headers, char *key) {
   return NULL;
 }
 
+// Returns the reason phrase for the HTTP status codes used by this server.
+// Returns NULL for codes this server does not use.
+char *get_http_code_message(int code) {
+  switch (code) {
+  case 200:
+    return "OK";
+  case 400:
+    return "Bad Request";
+  case 404:
+    return "Not Found";
+  case 414:
+    return "URI Too Long";
+  case 501:
+    return "Not Implemented";
+  case 505:
+    return "HTTP Version Not Supported";
+  default:
+    return NULL;
+  }
+}
+
 // Logic for how to handle incoming client
 void handle_client(int cfd) {
   char buf[MAX_REQUEST_SIZE];
