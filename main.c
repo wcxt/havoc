@@ -134,6 +134,48 @@ char *get_http_code_message(int code) {
   }
 }
 
+// parse_start_line parses data buffer containing startline fragment.
+// It stores the value results in http_request fields
+// and validates their correctnessc according to HTTP RFC
+// Returns 0 on success and HTTP error code (int) on error
+int parse_start_line(char *startline, HttpRequest *http_request) {
+  http_request->method = startline;
+  char *space = strstr(startline, " ");
+  if (space == NULL) {
+    return 400;
+  }
+  *space = '\0';
+
+  http_request->target = space + 1;
+  space = strstr(http_request->target, " ");
+  if (space == NULL) {
+    return 400;
+  }
+  *space = '\0';
+
+  http_request->version = space + 1;
+
+  // Validate method (Only HEAD and GET are implemented)
+  if (strcmp(http_request->method, "GET") != 0 &&
+      strcmp(http_request->method, "HEAD") != 0) {
+    return 501;
+  }
+  // Validate version (Both HTTP1.0 and 1.1 are supported)
+  if (strcmp(http_request->version, "HTTP/1.1") != 0 &&
+      strcmp(http_request->version, "HTTP/1.0") != 0) {
+    return 505;
+  }
+  // Validate path. We support only origin-form
+  if (http_request->target[0] != '/') {
+    return 400;
+  }
+  if (strlen(http_request->target) > MAX_URI_LENGTH) {
+    return 414;
+  }
+
+  return 0;
+}
+
 // Logic for how to handle incoming client
 void handle_client(int cfd) {
   char buf[MAX_REQUEST_SIZE];
@@ -179,51 +221,12 @@ void handle_client(int cfd) {
       *crlf = '\0';
       headers = crlf + 2;
 
-      // Parse Start-line
-      http_request.method = buf;
-      char *space = strstr(buf, " ");
-      if (space == NULL) {
-        fprintf(stderr, "handle_client: Invalid start-line format");
+      int res = parse_start_line(buf, &http_request);
+      if (res > 0) {
+        dprintf(cfd, "HTTP/1.1 %d %s\r\n\r\n", res, get_http_code_message(res));
         close(cfd);
         return;
       }
-      *space = '\0';
-      http_request.target = space + 1;
-
-      char *space2 = strstr(http_request.target, " ");
-      if (space2 == NULL) {
-        fprintf(stderr, "handle_client: Invalid start-line format");
-        close(cfd);
-        return;
-      }
-      *space2 = '\0';
-      http_request.version = space2 + 1;
-    }
-
-    // Validate method (Only HEAD and GET are implemented)
-    if (strcmp(http_request.method, "GET") != 0 &&
-        strcmp(http_request.method, "HEAD") != 0) {
-      dprintf(cfd, "HTTP/1.1 501 Not Implemented\r\n\r\n");
-      close(cfd);
-      return;
-    }
-    // Validate version (Both HTTP1.0 and 1.1 are supported)
-    if (strcmp(http_request.version, "HTTP/1.1") != 0 &&
-        strcmp(http_request.version, "HTTP/1.0") != 0) {
-      dprintf(cfd, "HTTP/1.1 505 HTTP Version Not Supported\r\n\r\n");
-      close(cfd);
-      return;
-    }
-    // Validate path. We support only origin-form
-    if (http_request.target[0] != '/') {
-      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
-      close(cfd);
-      return;
-    }
-    if (strlen(http_request.target) > MAX_URI_LENGTH) {
-      dprintf(cfd, "HTTP/1.1 414 URI Too Long\r\n\r\n");
-      close(cfd);
-      return;
     }
 
     if (headers && !body) {
