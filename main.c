@@ -125,6 +125,8 @@ char *get_http_code_message(int code) {
     return "Not Found";
   case 414:
     return "URI Too Long";
+  case 500:
+    return "Internal Server Error";
   case 501:
     return "Not Implemented";
   case 505:
@@ -171,6 +173,51 @@ int parse_start_line(char *startline, HttpRequest *http_request) {
   }
   if (strlen(http_request->target) > MAX_URI_LENGTH) {
     return 414;
+  }
+
+  return 0;
+}
+
+// parse_headers parses data buffer containing headers fragment
+// It stores value results in http_request.headers data structure
+// and validates correctness of host header
+// Returns 0 on success and HTTP error code (int) on error
+int parse_headers(char *headers, HttpRequest *http_request) {
+  while (1) {
+    char *crlf = strstr(headers, "\r\n");
+    if (crlf == NULL) {
+      break;
+    }
+    *crlf = '\0';
+
+    char *colon = strstr(headers, ":");
+    if (colon == NULL) {
+      return 400;
+    }
+    *colon = '\0';
+    char *value = colon + 1;
+
+    if (http_headers_add(&http_request->headers, headers, value) < 0) {
+      return 400;
+    }
+
+    headers = crlf + 2;
+  }
+
+  // Host header validation
+  // TODO: Check if host header has valid value
+  int host_count = 0;
+  for (int i = 0; i < http_request->headers.len; i++) {
+    if (strcmp(http_request->headers.entries[i].key, "host") == 0) {
+      host_count++;
+    }
+  }
+
+  if (host_count > 1) {
+    return 400;
+  }
+  if (strcmp(http_request->version, "HTTP/1.1") == 0 && host_count == 0) {
+    return 400;
   }
 
   return 0;
@@ -230,67 +277,26 @@ void handle_client(int cfd) {
     }
 
     if (headers && !body) {
-      char *hcrlf = strstr(headers, "\r\n\r\n");
-      if (hcrlf == NULL) {
-        continue;
+      char *crlf = strstr(headers, "\r\n\r\n");
+      if (crlf == NULL) {
+        // No headers edge case
+        crlf = strstr(headers, "\r\n");
+        if (headers != crlf) {
+          continue;
+        }
+      } else {
+        crlf += 2;
       }
-      *hcrlf = '\0';
-      body = hcrlf + 4;
 
-      // Parse headers
-      char *fcrlf = NULL;
-      char *rest = headers;
-      int header_len = 0;
+      *crlf = '\0';
+      body = crlf + 2;
 
-      while (1) {
-        fcrlf = strstr(rest, "\r\n");
-        if (fcrlf != NULL) {
-          *fcrlf = '\0';
-        }
-
-        char *value = NULL;
-
-        char *colon = strstr(rest, ":");
-        if (colon == NULL) {
-          fprintf(stderr, "handle_client: Invalid headers format");
-          close(cfd);
-          return;
-        }
-        *colon = '\0';
-        value = colon + 1;
-
-        if (http_headers_add(&http_request.headers, rest, value) < 0) {
-          fprintf(
-              stderr,
-              "http_request_add_header: Exceeded limit of MAX_REQUEST_HEADERS");
-          close(cfd);
-          return;
-        }
-
-        if (fcrlf == NULL) {
-          break;
-        }
-        rest = fcrlf + 2;
+      int res = parse_headers(headers, &http_request);
+      if (res > 0) {
+        dprintf(cfd, "HTTP/1.1 %d %s\r\n\r\n", res, get_http_code_message(res));
+        close(cfd);
+        return;
       }
-    }
-
-    // Host header validation
-    // TODO: Check if valid value
-    int host_count = 0;
-    for (int i = 0; i < http_request.headers.len; i++) {
-      if (strcmp(http_request.headers.entries[i].key, "host") == 0) {
-        host_count++;
-      }
-    }
-    if (host_count > 1) {
-      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
-      close(cfd);
-      return;
-    }
-    if (strcmp(http_request.version, "HTTP/1.1") == 0 && host_count == 0) {
-      dprintf(cfd, "HTTP/1.1 400 Bad Request\r\n\r\n");
-      close(cfd);
-      return;
     }
 
     char *content_len_raw =
