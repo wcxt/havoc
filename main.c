@@ -229,6 +229,29 @@ int parse_headers(char *headers, HttpRequest *http_request) {
   return 0;
 }
 
+// get_mimetype returns the content mimetype based on the filename extension.
+// Falls back to application/octet-stream for unknown or missing extensions.
+char *get_mimetype(char *filename) {
+  assert(filename != NULL);
+
+  char *ext = strrchr(filename, '.');
+  if (ext == NULL) {
+    return "application/octet-stream";
+  }
+
+  if (strcmp(ext, ".html") == 0) {
+    return "text/html";
+  }
+  if (strcmp(ext, ".css") == 0) {
+    return "text/css";
+  }
+  if (strcmp(ext, ".js") == 0) {
+    return "application/javascript";
+  }
+
+  return "application/octet-stream";
+}
+
 // Logic for how to handle incoming client
 void handle_client(int cfd) {
   char buf[MAX_REQUEST_SIZE];
@@ -374,29 +397,7 @@ void handle_client(int cfd) {
   }
 
   // Get mimetype
-  char *filename = strrchr(full_path, '/');
-  if (filename == NULL) {
-    perror("strrchr");
-    close(rfd);
-    close(cfd);
-    return;
-  }
-  char *ext = strchr(filename, '.');
-  if (ext == NULL) {
-    perror("strchr");
-    close(rfd);
-    close(cfd);
-    return;
-  }
-
-  char *mimetype = "application/octet-stream";
-  if (strcmp(ext, ".html") == 0) {
-    mimetype = "text/html";
-  } else if (strcmp(ext, ".css") == 0) {
-    mimetype = "text/css";
-  } else if (strcmp(ext, ".js") == 0) {
-    mimetype = "application/javascript";
-  }
+  char *mimetype = get_mimetype(full_path);
 
   // Send initial response data (startline + headers)
   dprintf(cfd,
