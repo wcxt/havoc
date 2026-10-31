@@ -141,6 +141,9 @@ char *get_http_code_message(int code) {
 // and validates their correctnessc according to HTTP RFC
 // Returns 0 on success and HTTP error code (int) on error
 int parse_start_line(char *startline, HttpRequest *http_request) {
+  assert(startline != NULL);
+  assert(http_request != NULL);
+
   http_request->method = startline;
   char *space = strstr(startline, " ");
   if (space == NULL) {
@@ -183,6 +186,9 @@ int parse_start_line(char *startline, HttpRequest *http_request) {
 // and validates correctness of host header
 // Returns 0 on success and HTTP error code (int) on error
 int parse_headers(char *headers, HttpRequest *http_request) {
+  assert(headers != NULL);
+  assert(http_request != NULL);
+
   while (1) {
     char *crlf = strstr(headers, "\r\n");
     if (crlf == NULL) {
