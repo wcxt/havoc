@@ -252,6 +252,74 @@ char *get_mimetype(char *filename) {
   return "application/octet-stream";
 }
 
+void handle_request(int fd, HttpRequest *http_request) {
+  // Strip query and fragment
+  char *path = strdup(http_request->target);
+  if (path == NULL) {
+    perror("strdup");
+    return;
+  }
+
+  char *rest = strpbrk(path, "?#");
+  if (rest != NULL) {
+    *rest = '\0';
+    rest += 1;
+  }
+
+  // Resource path
+  char full_path[MAX_URI_LENGTH];
+  sprintf(full_path, "public%s", path);
+
+  // Transform / into index.html
+  if (path[strlen(path) - 1] == '/') {
+    strcat(full_path, "index.html");
+  }
+
+  int rfd = open(full_path, O_RDONLY);
+  if (rfd < 0) {
+    if (errno == ENOENT) {
+      dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+    } else {
+      perror("open");
+    }
+    return;
+  }
+
+  // Get content length from stats
+  struct stat st;
+  int ret = fstat(rfd, &st);
+  if (ret < 0) {
+    perror("fstat");
+    close(rfd);
+    return;
+  }
+
+  // Get mimetype
+  char *mimetype = get_mimetype(full_path);
+
+  // Send initial response data (startline + headers)
+  dprintf(fd,
+          "HTTP/1.1 200 %s\r\nContent-Length: %ld\r\nContent-Type: %s; "
+          "charset=utf-8\r\n\r\n",
+          get_http_code_message(200), st.st_size, mimetype);
+
+  long offset = 0;
+  while (offset < st.st_size) {
+    int bytes_written = sendfile(fd, rfd, &offset, st.st_size - offset);
+    if (bytes_written <= 0) {
+      if (bytes_written < 0 && errno == EINTR) {
+        continue;
+      }
+      if (bytes_written < 0) {
+        perror("sendfile");
+      }
+      break;
+    }
+  }
+
+  close(rfd);
+}
+
 // Logic for how to handle incoming client
 void handle_client(int cfd) {
   char buf[MAX_REQUEST_SIZE];
@@ -352,76 +420,7 @@ void handle_client(int cfd) {
     break;
   };
 
-  // Strip query and fragment
-  char *path = strdup(http_request.target);
-  if (path == NULL) {
-    perror("strdup");
-    close(cfd);
-    return;
-  }
-
-  char *rest = strpbrk(path, "?#");
-  if (rest != NULL) {
-    *rest = '\0';
-    rest += 1;
-  }
-
-  // Resource path
-  char full_path[512];
-  sprintf(full_path, "public%s", path);
-
-  // Transform / into index.html
-  if (path[strlen(path) - 1] == '/') {
-    strcat(full_path, "index.html");
-  }
-
-  int rfd = open(full_path, O_RDONLY);
-  if (rfd < 0) {
-    if (errno == ENOENT) {
-      dprintf(cfd, "HTTP/1.1 404 Not Found\r\n\r\n");
-    } else {
-      perror("open");
-    }
-    close(cfd);
-    return;
-  }
-
-  // Get content length from stats
-  struct stat st;
-  int ret = fstat(rfd, &st);
-  if (ret < 0) {
-    perror("fstat");
-    close(rfd);
-    close(cfd);
-    return;
-  }
-
-  // Get mimetype
-  char *mimetype = get_mimetype(full_path);
-
-  // Send initial response data (startline + headers)
-  dprintf(cfd,
-          "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\nContent-Type: %s; "
-          "charset=utf-8\r\n\r\n",
-          st.st_size, mimetype);
-
-  long offset = 0;
-  while (offset < st.st_size) {
-    int bytes_written = sendfile(cfd, rfd, &offset, st.st_size - offset);
-    if (bytes_written <= 0) {
-      if (bytes_written < 0 && errno == EINTR) {
-        continue;
-      }
-      if (bytes_written < 0) {
-        perror("sendfile");
-      }
-      close(rfd);
-      close(cfd);
-      return;
-    }
-  }
-
-  close(rfd);
+  handle_request(cfd, &http_request);
   close(cfd);
   return;
 }
