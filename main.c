@@ -253,25 +253,17 @@ char *get_mimetype(char *filename) {
 }
 
 void handle_request(int fd, HttpRequest *http_request) {
-  // Strip query and fragment
-  char *path = strdup(http_request->target);
-  if (path == NULL) {
-    perror("strdup");
-    return;
-  }
-
-  char *rest = strpbrk(path, "?#");
+  char *rest = strpbrk(http_request->target, "?#");
   if (rest != NULL) {
     *rest = '\0';
-    rest += 1;
   }
 
   // Resource path
   char full_path[MAX_URI_LENGTH];
-  sprintf(full_path, "public%s", path);
+  sprintf(full_path, "public%s", http_request->target);
 
   // Transform / into index.html
-  if (path[strlen(path) - 1] == '/') {
+  if (http_request->target[strlen(http_request->target) - 1] == '/') {
     strcat(full_path, "index.html");
   }
 
