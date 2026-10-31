@@ -273,6 +273,7 @@ void handle_request(int fd, HttpRequest *http_request) {
       dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
     } else {
       perror("open");
+      dprintf(fd, "HTTP/1.1 500 %s\r\n\r\n", get_http_code_message(500));
     }
     return;
   }
@@ -283,6 +284,7 @@ void handle_request(int fd, HttpRequest *http_request) {
   if (ret < 0) {
     perror("fstat");
     close(rfd);
+    dprintf(fd, "HTTP/1.1 500 %s\r\n\r\n", get_http_code_message(500));
     return;
   }
 
