@@ -259,7 +259,7 @@ void handle_request(int fd, HttpRequest *http_request) {
   }
 
   // Resource path
-  char full_path[MAX_URI_LENGTH];
+  char full_path[MAX_URI_LENGTH + sizeof("public/index.html")];
   sprintf(full_path, "public%s", http_request->target);
 
   // Transform / into index.html
@@ -438,7 +438,7 @@ int main() {
 
   // man 7 ip for info
   struct sockaddr_in addr = {.sin_family = AF_INET,
-                             .sin_port = htons(8000),
+                             .sin_port = htons(8080),
                              .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
