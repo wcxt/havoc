@@ -419,7 +419,48 @@ void handle_client(int cfd) {
   return;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+  long int port = -1;
+
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0) {
+      if (port != -1) {
+        fprintf(stderr, "duplicate -p / --port flag\n");
+        return EXIT_FAILURE;
+      }
+
+      if (argc == i + 1) {
+        fprintf(stderr, "missing value for flag -p / --port\n");
+        return EXIT_FAILURE;
+      }
+      i++;
+
+      char *endptr;
+      errno = 0;
+      long int new_port = strtol(argv[i], &endptr, 10);
+      if (endptr == argv[i] || *endptr != '\0') {
+        fprintf(stderr, "flag -p / --port value is not a valid digit\n");
+        return EXIT_FAILURE;
+      }
+      if (errno != 0) {
+        perror("flag -p / --port value conversion");
+        return EXIT_FAILURE;
+      }
+      if (new_port < 0 || new_port > 65535) {
+        fprintf(stderr, "flag -p / --port value is out of range\n");
+        return EXIT_FAILURE;
+      }
+      port = new_port;
+      continue;
+    }
+    fprintf(stderr, "unknown argument / flag: %s\n", argv[i]);
+    return EXIT_FAILURE;
+  }
+
+  if (port == -1) {
+    port = 8080;
+  }
+
   // Opens an endpoint/file descriptor for communication.
   // 0 chooses TCP protocol automatically
   int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -438,7 +479,7 @@ int main() {
 
   // man 7 ip for info
   struct sockaddr_in addr = {.sin_family = AF_INET,
-                             .sin_port = htons(8080),
+                             .sin_port = htons(port),
                              .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
 
   ret = bind(fd, (const struct sockaddr *)&addr, sizeof(addr));
