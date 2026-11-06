@@ -422,6 +422,8 @@ void handle_client(int cfd, char *dir_path) {
 
 int main(int argc, char *argv[]) {
   long int port = -1;
+  char directory[MAX_DIR_LENGTH];
+  directory[0] = '\0';
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0) {
@@ -454,12 +456,46 @@ int main(int argc, char *argv[]) {
       port = new_port;
       continue;
     }
+    if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--directory") == 0) {
+      if (directory[0] != '\0') {
+        fprintf(stderr, "duplicate -d / --directory flag\n");
+        return EXIT_FAILURE;
+      }
+
+      if (argc == i + 1) {
+        fprintf(stderr, "missing value for flag -d / --directory\n");
+        return EXIT_FAILURE;
+      }
+      i++;
+
+      struct stat sb;
+      int ret = stat(argv[i], &sb);
+      if (ret < 0) {
+        perror("flag -d / --directory value");
+        return EXIT_FAILURE;
+      }
+      if (!S_ISDIR(sb.st_mode)) {
+        fprintf(stderr, "flag -d / --directory value is not a directory\n");
+        return EXIT_FAILURE;
+      }
+      if (strlen(argv[i]) >= MAX_DIR_LENGTH) {
+        fprintf(stderr, "flag -d / --directory value path is to long\n");
+        return EXIT_FAILURE;
+      }
+
+      snprintf(directory, sizeof(directory), "%s", argv[i]);
+      continue;
+    }
     fprintf(stderr, "unknown argument / flag: %s\n", argv[i]);
     return EXIT_FAILURE;
   }
 
   if (port == -1) {
     port = 8080;
+  }
+  if (directory[0] == '\0') {
+    fprintf(stderr, "flag -d / --directory is required\n");
+    return EXIT_FAILURE;
   }
 
   // Opens an endpoint/file descriptor for communication.
@@ -519,7 +555,7 @@ int main(int argc, char *argv[]) {
       break;
     }
 
-    handle_client(cfd);
+    handle_client(cfd, directory);
   }
   close(fd);
   return EXIT_SUCCESS;
