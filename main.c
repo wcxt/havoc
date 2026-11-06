@@ -299,6 +299,7 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
           get_http_code_message(200), st.st_size, mimetype);
 
   if (strcmp(http_request->method, "HEAD") == 0) {
+    close(rfd);
     return;
   }
 
