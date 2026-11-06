@@ -486,6 +486,21 @@ int main(int argc, char *argv[]) {
       snprintf(directory, sizeof(directory), "%s", argv[i]);
       continue;
     }
+    if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+      printf("\033[1mUsage:\033[0m %s -d <directory> [-p <port>]\n"
+             "\n"
+             "A simple HTTP server that serves static files from a "
+             "directory.\n"
+             "\n"
+             "\033[1mOptions:\033[0m\n"
+             "  -d, --directory <path>  Directory to serve files from "
+             "(required).\n"
+             "  -p, --port <port>       TCP port to listen on, 0-65535 "
+             "(default: 8080).\n"
+             "  -h, --help              Show this help message and exit.\n",
+             argv[0]);
+      return EXIT_SUCCESS;
+    }
     fprintf(stderr, "unknown argument / flag: %s\n", argv[i]);
     return EXIT_FAILURE;
   }
