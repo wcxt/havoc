@@ -18,6 +18,7 @@
 #define MAX_REQUEST_SIZE 65536
 #define MAX_REQUEST_HEADERS 64
 #define MAX_URI_LENGTH 1024
+#define MAX_DIR_LENGTH 256
 
 typedef struct {
   char *key;
@@ -252,15 +253,15 @@ char *get_mimetype(char *filename) {
   return "application/octet-stream";
 }
 
-void handle_request(int fd, HttpRequest *http_request) {
+void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   char *rest = strpbrk(http_request->target, "?#");
   if (rest != NULL) {
     *rest = '\0';
   }
 
   // Resource path
-  char full_path[MAX_URI_LENGTH + sizeof("public/index.html")];
-  sprintf(full_path, "public%s", http_request->target);
+  char full_path[MAX_URI_LENGTH + MAX_DIR_LENGTH + sizeof("/index.html")];
+  sprintf(full_path, "%s%s", dir_path, http_request->target);
 
   // Transform / into index.html
   if (http_request->target[strlen(http_request->target) - 1] == '/') {
@@ -315,7 +316,7 @@ void handle_request(int fd, HttpRequest *http_request) {
 }
 
 // Logic for how to handle incoming client
-void handle_client(int cfd) {
+void handle_client(int cfd, char *dir_path) {
   char buf[MAX_REQUEST_SIZE];
   char *headers = NULL;
   char *body = NULL;
@@ -414,7 +415,7 @@ void handle_client(int cfd) {
     break;
   };
 
-  handle_request(cfd, &http_request);
+  handle_request(cfd, &http_request, dir_path);
   close(cfd);
   return;
 }
