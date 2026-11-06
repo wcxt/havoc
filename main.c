@@ -298,6 +298,10 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
           "charset=utf-8\r\n\r\n",
           get_http_code_message(200), st.st_size, mimetype);
 
+  if (strcmp(http_request->method, "HEAD") == 0) {
+    return;
+  }
+
   long offset = 0;
   while (offset < st.st_size) {
     int bytes_written = sendfile(fd, rfd, &offset, st.st_size - offset);
