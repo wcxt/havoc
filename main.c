@@ -19,7 +19,6 @@
 #define MAX_REQUEST_SIZE 65536
 #define MAX_REQUEST_HEADERS 64
 #define MAX_URI_LENGTH 1024
-#define MAX_DIR_LENGTH 256
 
 typedef struct {
   char *key;
@@ -261,7 +260,7 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   }
 
   // Resource path
-  char full_path[MAX_URI_LENGTH + MAX_DIR_LENGTH + sizeof("/index.html")];
+  char full_path[MAX_URI_LENGTH + PATH_MAX + sizeof("/index.html")];
   sprintf(full_path, "%s%s", dir_path, http_request->target);
 
   // Transform / into index.html
@@ -276,16 +275,13 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
     return;
   }
 
-  char root_path[PATH_MAX];
-  if (realpath(dir_path, root_path) == NULL) {
-    perror("actualpath");
-    dprintf(fd, "HTTP/1.1 500 %s\r\n\r\n", get_http_code_message(500));
-    return;
-  }
-
-  if (strncmp(actualpath, root_path, strlen(root_path)) != 0) {
-    dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
-    return;
+  if (!(strcmp(dir_path, "/") == 0)) {
+    if (strncmp(actualpath, dir_path, strlen(dir_path)) != 0 ||
+        (actualpath[strlen(dir_path)] != '\0' &&
+         actualpath[strlen(dir_path)] != '/')) {
+      dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+      return;
+    }
   }
 
   int rfd = open(actualpath, O_RDONLY);
@@ -454,7 +450,7 @@ void handle_client(int cfd, char *dir_path) {
 
 int main(int argc, char *argv[]) {
   long int port = -1;
-  char directory[MAX_DIR_LENGTH];
+  char directory[PATH_MAX];
   directory[0] = '\0';
 
   for (int i = 1; i < argc; i++) {
@@ -500,8 +496,14 @@ int main(int argc, char *argv[]) {
       }
       i++;
 
+      char temp_path[PATH_MAX];
+      if (realpath(argv[i], temp_path) == NULL) {
+        perror("flag -d / --directory value");
+        return EXIT_FAILURE;
+      }
+
       struct stat sb;
-      int ret = stat(argv[i], &sb);
+      int ret = stat(temp_path, &sb);
       if (ret < 0) {
         perror("flag -d / --directory value");
         return EXIT_FAILURE;
@@ -510,12 +512,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "flag -d / --directory value is not a directory\n");
         return EXIT_FAILURE;
       }
-      if (strlen(argv[i]) >= MAX_DIR_LENGTH) {
-        fprintf(stderr, "flag -d / --directory value path is to long\n");
-        return EXIT_FAILURE;
-      }
 
-      snprintf(directory, sizeof(directory), "%s", argv[i]);
+      snprintf(directory, sizeof(directory), "%s", temp_path);
       continue;
     }
     if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
