@@ -271,7 +271,8 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   char actualpath[PATH_MAX];
   if (realpath(full_path, actualpath) == NULL) {
     perror("actualpath");
-    dprintf(fd, "HTTP/1.1 404 %s\r\nConnection: Close\r\n\r\n",
+    dprintf(fd,
+            "HTTP/1.1 404 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
             get_http_code_message(404));
     return;
   }
@@ -280,8 +281,10 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
     if (strncmp(actualpath, dir_path, strlen(dir_path)) != 0 ||
         (actualpath[strlen(dir_path)] != '\0' &&
          actualpath[strlen(dir_path)] != '/')) {
-      dprintf(fd, "HTTP/1.1 404 %s\r\nConnection: Close\r\n\r\n",
-              get_http_code_message(404));
+      dprintf(
+          fd,
+          "HTTP/1.1 404 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+          get_http_code_message(404));
       return;
     }
   }
@@ -289,12 +292,16 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   int rfd = open(actualpath, O_RDONLY);
   if (rfd < 0) {
     if (errno == ENOENT) {
-      dprintf(fd, "HTTP/1.1 404 %s\r\nConnection: Close\r\n\r\n",
-              get_http_code_message(404));
+      dprintf(
+          fd,
+          "HTTP/1.1 404 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+          get_http_code_message(404));
     } else {
       perror("open");
-      dprintf(fd, "HTTP/1.1 500 %s\r\nConnection: Close\r\n\r\n",
-              get_http_code_message(500));
+      dprintf(
+          fd,
+          "HTTP/1.1 500 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+          get_http_code_message(500));
     }
     return;
   }
@@ -305,7 +312,8 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   if (ret < 0) {
     perror("fstat");
     close(rfd);
-    dprintf(fd, "HTTP/1.1 500 %s\r\nConnection: Close\r\n\r\n",
+    dprintf(fd,
+            "HTTP/1.1 500 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
             get_http_code_message(500));
     return;
   }
@@ -313,7 +321,8 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   // Only regular files are sendable
   if (!S_ISREG(st.st_mode)) {
     close(rfd);
-    dprintf(fd, "HTTP/1.1 404 %s\r\nConnection: Close\r\n\r\n",
+    dprintf(fd,
+            "HTTP/1.1 404 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
             get_http_code_message(404));
     return;
   }
@@ -396,8 +405,10 @@ void handle_client(int cfd, char *dir_path) {
 
       int res = parse_start_line(buf, &http_request);
       if (res > 0) {
-        dprintf(cfd, "HTTP/1.1 %d %s\r\nConnection: Close\r\n\r\n", res,
-                get_http_code_message(res));
+        dprintf(
+            cfd,
+            "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+            res, get_http_code_message(res));
         close(cfd);
         return;
       }
@@ -420,8 +431,10 @@ void handle_client(int cfd, char *dir_path) {
 
       int res = parse_headers(headers, &http_request);
       if (res > 0) {
-        dprintf(cfd, "HTTP/1.1 %d %s\r\nConnection: Close\r\n\r\n", res,
-                get_http_code_message(res));
+        dprintf(
+            cfd,
+            "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+            res, get_http_code_message(res));
         close(cfd);
         return;
       }
