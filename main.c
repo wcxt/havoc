@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <stddef.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
@@ -268,7 +269,26 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
     strcat(full_path, "index.html");
   }
 
-  int rfd = open(full_path, O_RDONLY);
+  char actualpath[PATH_MAX];
+  if (realpath(full_path, actualpath) == NULL) {
+    perror("actualpath");
+    dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+    return;
+  }
+
+  char root_path[PATH_MAX];
+  if (realpath(dir_path, root_path) == NULL) {
+    perror("actualpath");
+    dprintf(fd, "HTTP/1.1 500 %s\r\n\r\n", get_http_code_message(500));
+    return;
+  }
+
+  if (strncmp(actualpath, root_path, strlen(root_path)) != 0) {
+    dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+    return;
+  }
+
+  int rfd = open(actualpath, O_RDONLY);
   if (rfd < 0) {
     if (errno == ENOENT) {
       dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
@@ -293,10 +313,11 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   if (!S_ISREG(st.st_mode)) {
     close(rfd);
     dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+    return;
   }
 
   // Get mimetype
-  char *mimetype = get_mimetype(full_path);
+  char *mimetype = get_mimetype(actualpath);
 
   // Send initial response data (startline + headers)
   dprintf(fd,
