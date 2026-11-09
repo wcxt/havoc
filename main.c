@@ -289,6 +289,12 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
     return;
   }
 
+  // Only regular files are sendable
+  if (!S_ISREG(st.st_mode)) {
+    close(rfd);
+    dprintf(fd, "HTTP/1.1 404 %s\r\n\r\n", get_http_code_message(404));
+  }
+
   // Get mimetype
   char *mimetype = get_mimetype(full_path);
 
