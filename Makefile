@@ -10,10 +10,13 @@ havoc: main.c
 
 debug: havoc-debug
 
+check: havoc-debug
+	./tests/smoke.sh ./$<
+
 havoc-debug: main.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(SAN) -O0 -o $@ $<
 
 clean:
 	rm -f havoc havoc-debug
 
-.PHONY: all clean debug
+.PHONY: all clean debug check
