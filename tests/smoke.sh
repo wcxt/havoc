@@ -3,10 +3,11 @@
 HAVOC_BIN="$1"
 TEST_BODY="/tmp/body"
 
-trap "pkill havoc-debug; rm $TEST_BODY" EXIT
-trap 'exit 130' INT TERM
-
 "$HAVOC_BIN" -d tests/fixture &
+HAVOC_PID="$!"
+
+trap "kill $HAVOC_PID; rm $TEST_BODY" EXIT
+trap 'exit 130' INT TERM
 
 sleep 0.5
 
