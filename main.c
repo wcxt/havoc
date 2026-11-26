@@ -124,6 +124,8 @@ char *get_http_code_message(int code) {
     return "Bad Request";
   case 404:
     return "Not Found";
+  case 413:
+    return "Payload Too Large";
   case 414:
     return "URI Too Long";
   case 500:
@@ -270,7 +272,6 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
 
   char actualpath[PATH_MAX];
   if (realpath(full_path, actualpath) == NULL) {
-    perror("actualpath");
     dprintf(fd,
             "HTTP/1.1 404 %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
             get_http_code_message(404));
@@ -358,111 +359,114 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
   close(rfd);
 }
 
-// Logic for how to handle incoming client
-void handle_client(int cfd, char *dir_path) {
-  char buf[MAX_REQUEST_SIZE];
-  char *headers = NULL;
-  char *body = NULL;
-
-  HttpRequest http_request = {
-      .method = NULL, .target = NULL, .version = NULL, .headers.len = 0};
-
-  long content_len = 0;
-  int total_n = 0;
-
+// read request reads data from fd to the buffer of specified
+// capacity and writes length of read data to the len pointer.
+// read request also append null byte to buffer.
+// It reads data until either \r\n\r\n terminator.
+// It will also return error when capacity was excedded.
+int read_request(int fd, char *buffer, int cap, int *len) {
+  int read_bytes = 0;
   while (1) {
-    // If buffer is full
-    if (total_n >= MAX_REQUEST_SIZE - 1) {
-      fprintf(stderr, "handle_client: buffer reached MAX_REQUEST_SIZE");
-      close(cfd);
-      return;
+
+    if (read_bytes >= cap - 1) {
+      return 413;
     }
 
-    ssize_t n = read(cfd, buf + total_n, (MAX_REQUEST_SIZE - total_n) - 1);
+    ssize_t n = read(fd, buffer + read_bytes, cap - read_bytes - 1);
+    if (n == 0) {
+      // Client aborted sending request
+      return -1;
+    }
     if (n < 0) {
       if (errno == EINTR) {
         continue;
       }
-
       perror("read");
-      close(cfd);
-      return;
-    }
-    if (n == 0) {
-      close(cfd);
-      return;
+      return -1;
     }
 
-    total_n += n;
+    int prev = read_bytes;
+    read_bytes += n;
+    buffer[read_bytes] = '\0';
 
-    if (!headers) {
-      char *crlf = strstr(buf, "\r\n");
-      if (crlf == NULL) {
-        continue;
-      }
-      *crlf = '\0';
-      headers = crlf + 2;
+    // prevents issue where separator would be split between different reads
+    int from = prev > 3 ? prev - 3 : 0;
+    char *end = strstr(buffer + from, "\r\n\r\n");
+    if (end != NULL) {
+      *len = read_bytes;
+      break;
+    }
+  }
 
-      int res = parse_start_line(buf, &http_request);
-      if (res > 0) {
-        dprintf(
-            cfd,
+  return 0;
+}
+
+// Logic for how to handle incoming client
+void handle_client(int cfd, char *dir_path) {
+  char req_buf[MAX_REQUEST_SIZE];
+  int req_len = 0;
+
+  HttpRequest http_request = {
+      .method = NULL, .target = NULL, .version = NULL, .headers.len = 0};
+
+  int ret = read_request(cfd, req_buf, MAX_REQUEST_SIZE, &req_len);
+  if (ret != 0) {
+    if (ret > 0) {
+      dprintf(
+          cfd,
+          "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+          ret, get_http_code_message(ret));
+    }
+    close(cfd);
+    return;
+  }
+  // Full request buffer ready cut at
+
+  char *startline_end = strstr(req_buf, "\r\n");
+  if (startline_end == NULL) {
+    dprintf(cfd,
             "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
-            res, get_http_code_message(res));
-        close(cfd);
-        return;
-      }
-    }
+            400, get_http_code_message(400));
+    close(cfd);
+    return;
+  }
+  *startline_end = '\0';
+  // Startline becomes cut by inserting \0 at \r\n
 
-    if (headers && !body) {
-      char *crlf = strstr(headers, "\r\n\r\n");
-      if (crlf == NULL) {
-        // No headers edge case
-        crlf = strstr(headers, "\r\n");
-        if (headers != crlf) {
-          continue;
-        }
-      } else {
-        crlf += 2;
-      }
-
-      *crlf = '\0';
-      body = crlf + 2;
-
-      int res = parse_headers(headers, &http_request);
-      if (res > 0) {
-        dprintf(
-            cfd,
+  ret = parse_start_line(req_buf, &http_request);
+  if (ret > 0) {
+    dprintf(cfd,
             "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
-            res, get_http_code_message(res));
-        close(cfd);
-        return;
-      }
-    }
+            ret, get_http_code_message(ret));
+    close(cfd);
+    return;
+  }
+  // Parse startline results into http requests
 
-    char *content_len_raw =
-        http_headers_get(&http_request.headers, "Content-length");
-    if (content_len_raw) {
-      errno = 0;
-      content_len = strtol(content_len_raw, NULL, 10);
-      if (errno != 0) {
-        perror("strtol");
-        close(cfd);
-        return;
-      }
-    }
-    // Guarranted headers + body at this stage
-    if (headers && body && content_len > 0) {
-      printf("Reading body size = %ld\n", content_len);
+  char *headers_start = startline_end + 2;
+  char *headers_end = strstr(headers_start, "\r\n\r\n");
 
-      size_t body_read = total_n - (headers - buf);
-      if (body_read < content_len) {
-        continue;
-      }
-      buf[total_n] = '\0';
-    }
-    break;
-  };
+  if (headers_end != NULL) {
+    headers_end += 2;
+  } else if (headers_start[1] == '\n' && headers_start[0] == '\r') {
+    headers_end = headers_start;
+  } else {
+    dprintf(cfd,
+            "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+            500, get_http_code_message(500));
+    close(cfd);
+    return;
+  }
+  *headers_end = '\0';
+
+  ret = parse_headers(headers_start, &http_request);
+  if (ret > 0) {
+    dprintf(cfd,
+            "HTTP/1.1 %d %s\r\nConnection: Close\r\nContent-Length: 0\r\n\r\n",
+            ret, get_http_code_message(ret));
+    close(cfd);
+    return;
+  }
 
   handle_request(cfd, &http_request, dir_path);
   close(cfd);
