@@ -15,8 +15,8 @@
 #include <stddef.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 
 #define MAX_REQUEST_SIZE 65536
 #define MAX_REQUEST_HEADERS 64
@@ -370,12 +370,22 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
 // It will also return error when capacity was excedded.
 //
 // Additionally read_request can fail on either timeoout from read operation
+// Or reading request after the deadline has been exceeded
 int read_request(int fd, char *buffer, int cap, int *len) {
+  time_t deadline = time(NULL);
+  deadline += 8;
+
   int read_bytes = 0;
   while (1) {
 
     if (read_bytes >= cap - 1) {
       return 413;
+    }
+
+    time_t current = time(NULL);
+    double diff = difftime(deadline, current);
+    if (diff <= 0) {
+      return 408;
     }
 
     ssize_t n = read(fd, buffer + read_bytes, cap - read_bytes - 1);
