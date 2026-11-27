@@ -5,6 +5,7 @@
 #include "sys/socket.h"
 #include "unistd.h"
 #include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <asm-generic/socket.h>
 #include <assert.h>
 #include <ctype.h>
@@ -14,6 +15,7 @@
 #include <stddef.h>
 #include <sys/sendfile.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 
 #define MAX_REQUEST_SIZE 65536
@@ -124,6 +126,8 @@ char *get_http_code_message(int code) {
     return "Bad Request";
   case 404:
     return "Not Found";
+  case 408:
+    return "Request Timeout";
   case 413:
     return "Payload Too Large";
   case 414:
@@ -364,6 +368,8 @@ void handle_request(int fd, HttpRequest *http_request, char *dir_path) {
 // read request also append null byte to buffer.
 // It reads data until either \r\n\r\n terminator.
 // It will also return error when capacity was excedded.
+//
+// Additionally read_request can fail on either timeoout from read operation
 int read_request(int fd, char *buffer, int cap, int *len) {
   int read_bytes = 0;
   while (1) {
@@ -378,6 +384,9 @@ int read_request(int fd, char *buffer, int cap, int *len) {
       return -1;
     }
     if (n < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return 408;
+      }
       if (errno == EINTR) {
         continue;
       }
@@ -605,7 +614,7 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  // Basic TCP accept loop
+  // Basic TCP accept loopq
   // accept -> read data -> process data -> close connection
   while (1) {
     int cfd = accept(fd, NULL, NULL);
@@ -624,6 +633,10 @@ int main(int argc, char *argv[]) {
       perror("accept");
       break;
     }
+    struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
+
+    setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(cfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
     handle_client(cfd, directory);
   }
